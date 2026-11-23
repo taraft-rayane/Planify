@@ -1,6 +1,9 @@
 {
   "name": "planify",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "build": "npm run build --prefix client",
     "start": "npm start --prefix server"
