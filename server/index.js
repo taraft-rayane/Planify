@@ -4,10 +4,18 @@ import cors from 'cors'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { createClient } from '@supabase/supabase-js'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 const app = express()
-app.use(cors({ origin: process.env.CLIENT_URL }))
+const clientUrl = process.env.CLIENT_URL
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || !clientUrl || origin === clientUrl) return callback(null, true)
+    callback(null, false)
+  }
+}))
 app.use(express.json())
 
 const wrap = f => (req, res) => f(req, res).catch(e => res.status(500).json({ error: e.message }))
@@ -108,5 +116,14 @@ app.post('/api/chat', auth, wrap(async (req, res) => {
   if (!reply) return res.status(502).json({ error: 'Gemini returned no text. Try rephrasing your message.' })
   res.json({ reply })
 }))
+
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = resolve(dirname(fileURLToPath(import.meta.url)), '../client/dist')
+  app.use(express.static(clientDist))
+  app.get('*', (req, res, next) => {
+    if (req.path === '/api' || req.path.startsWith('/api/')) return next()
+    res.sendFile(resolve(clientDist, 'index.html'))
+  })
+}
 
 app.listen(process.env.PORT || 3001, () => console.log('API prête'))

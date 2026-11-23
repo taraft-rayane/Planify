@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: planify
+    runtime: node
+    buildCommand: npm install --prefix client && npm run build --prefix client && npm install --prefix server
+    startCommand: npm start --prefix server
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: PIN_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"

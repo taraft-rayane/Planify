@@ -1,8 +1,10 @@
 import { supabase } from './supabase'
+const apiBaseUrl = import.meta.env.VITE_API_URL || '/api'
+
 export async function api(path, { body, ...opts } = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   const pt = sessionStorage.getItem('pinToken')
-  const r = await fetch(import.meta.env.VITE_API_URL + path, {
+  const r = await fetch(apiBaseUrl + path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}`, ...(pt ? { 'x-pin-token': pt } : {}) },
     body: body && JSON.stringify(body)
