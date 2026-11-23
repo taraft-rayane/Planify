@@ -121,17 +121,36 @@ function Auth() {
   const [step, setStep] = useState(1)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [retrySeconds, setRetrySeconds] = useState(0)
   const navigate = useNavigate()
+  useEffect(() => {
+    if (!retrySeconds) return
+    const timer = window.setInterval(() => {
+      setRetrySeconds(seconds => Math.max(0, seconds - 1))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [retrySeconds > 0])
   const sendCode = async event => {
     event.preventDefault()
     setError('')
     if (!supabaseConfigured) return setError('Supabase is not configured. Copy client/.env.example to client/.env and add your project URL and anon key.')
     if (pin && !/^\d{4}$/.test(pin)) return setError('Your vault PIN must be exactly four digits.')
+    if (retrySeconds) return setError(`Please wait ${retrySeconds} seconds before requesting another code.`)
     setBusy(true)
     const { error: authError } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
     setBusy(false)
-    if (authError) setError(authError.message)
-    else setStep(2)
+    if (authError) {
+      const message = authError.message || 'Could not send the verification code.'
+      if (/rate limit|too many|email rate/i.test(message)) {
+        setRetrySeconds(60)
+        setError('Too many email requests. Please wait 60 seconds before trying again.')
+      } else {
+        setError(message)
+      }
+    } else {
+      setRetrySeconds(60)
+      setStep(2)
+    }
   }
   const verifyCode = async event => {
     event.preventDefault()
@@ -169,7 +188,7 @@ function Auth() {
             <label>Vault PIN <span className="label-optional">Optional for first-time setup</span><input inputMode="numeric" autoComplete="new-password" maxLength={4} placeholder="4 digits" value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} /></label>
             <p className="form-hint"><Icon>lock</Icon> The PIN protects your Private Plans vault.</p>
             <ErrorNotice message={error} />
-            <Button className="button-full" disabled={busy}>{busy ? 'Sending code…' : 'Continue with email'} <Icon>arrow_forward</Icon></Button>
+            <Button className="button-full" disabled={busy || retrySeconds > 0}>{busy ? 'Sending code…' : retrySeconds ? `Try again in ${retrySeconds}s` : 'Continue with email'} <Icon>arrow_forward</Icon></Button>
           </form> : <form className="form-stack" onSubmit={verifyCode}>
             <label>Verification code<input autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="Enter your code" value={code} onChange={event => setCode(event.target.value.replace(/\s/g, ''))} /></label>
             <ErrorNotice message={error} />
