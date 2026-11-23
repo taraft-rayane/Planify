@@ -2,7 +2,7 @@
   "name": "planify",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": "26.x"
   },
   "scripts": {
     "build": "npm run build --prefix client",
