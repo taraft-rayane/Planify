@@ -115,94 +115,61 @@ function Feature({ icon, title, text }) {
 }
 
 function Auth() {
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [pin, setPin] = useState('')
-  const [code, setCode] = useState('')
-  const [step, setStep] = useState(1)
+  const [password, setPassword] = useState('')
+  const [isSignUp, setIsSignUp] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
-  const [retrySeconds, setRetrySeconds] = useState(0)
   const navigate = useNavigate()
-  useEffect(() => {
-    if (!retrySeconds) return
-    const timer = window.setInterval(() => {
-      setRetrySeconds(seconds => Math.max(0, seconds - 1))
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [retrySeconds > 0])
-  const sendCode = async event => {
+
+  const submit = async event => {
     event.preventDefault()
     setError('')
+    setNotice('')
     if (!supabaseConfigured) return setError('Supabase is not configured. Copy client/.env.example to client/.env and add your project URL and anon key.')
-    if (retrySeconds) return setError(`Please wait ${retrySeconds} seconds before requesting another code.`)
+    if (isSignUp && !name.trim()) return setError('Enter your name to create an account.')
     setBusy(true)
-    const { error: authError } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
-    setBusy(false)
-    if (authError) {
-      const message = authError.message || 'Could not send the verification code.'
-      if (/rate limit|too many|email rate/i.test(message)) {
-        setRetrySeconds(60)
-        setError('Too many email requests. Please wait 60 seconds before trying again.')
-      } else {
-        setError(message)
-      }
-    } else {
-      setRetrySeconds(60)
-      setStep(2)
-    }
-  }
-  const verifyCode = async event => {
-    event.preventDefault()
-    setError('')
-    if (!supabaseConfigured) return setError('Supabase is not configured. Copy client/.env.example to client/.env and add your project URL and anon key.')
-    if (!/^\d{4}$/.test(pin)) {
-      setError('Enter your 4-digit PIN to complete sign-in.')
-      return
-    }
-    setBusy(true)
-    const { error: authError } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
-    if (authError) {
-      setBusy(false)
-      setError('That code is invalid or expired. Please try again.')
-      return
-    }
     try {
-      const { hasPin } = await api('/pin/status')
-      if (hasPin) {
-        const { token } = await api('/pin/verify', { method: 'POST', body: { pin } })
-        sessionStorage.setItem('pinToken', token)
+      if (isSignUp) {
+        const { data, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name.trim() } }
+        })
+        if (authError) setError(authError.message)
+        else if (data.session) navigate('/app')
+        else setNotice('Account created. Check your email for the confirmation link, then sign in.')
       } else {
-        await api('/pin', { method: 'POST', body: { pin } })
-        const { token } = await api('/pin/verify', { method: 'POST', body: { pin } })
-        sessionStorage.setItem('pinToken', token)
+        const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+        if (authError) setError(authError.message)
+        else navigate('/app')
       }
     } catch (reason) {
+      setError(reason.message || 'Authentication failed. Please try again.')
+    } finally {
       setBusy(false)
-      setError(reason.message || 'Could not complete PIN verification or setup.')
-      return
     }
-    setBusy(false)
-    navigate('/app')
   }
   return (
     <main className="auth-page">
       <div className="auth-shell">
         <section className="auth-card">
           <Link className="brand" to="/"><span className="brand-mark"><Icon>checklist</Icon></span><span>Planify</span></Link>
-          <div className="auth-copy"><span className="eyebrow">{step === 1 ? 'A calmer way to plan' : 'One last step'}</span><h1>{step === 1 ? 'Make space for your goals.' : 'Check your inbox.'}</h1><p>{step === 1 ? 'Sign in or create your account with a one-time email code.' : `Enter the verification code sent to ${email}.`}</p></div>
-          {step === 1 ? <form className="form-stack" onSubmit={sendCode}>
+          <div className="auth-copy"><span className="eyebrow">{isSignUp ? 'A calmer way to plan' : 'Welcome back'}</span><h1>{isSignUp ? 'Make space for your goals.' : 'Sign in to Planify.'}</h1><p>{isSignUp ? 'Create your account with your name, email, and password.' : 'Sign in with your email and password.'}</p></div>
+          <form className="form-stack" onSubmit={submit}>
+            {isSignUp && <label>Full name<input autoComplete="name" required placeholder="Your name" value={name} onChange={event => setName(event.target.value)} /></label>}
             <label>Email address<input autoComplete="email" type="email" required placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} /></label>
+            <label>Password<input autoComplete={isSignUp ? 'new-password' : 'current-password'} type="password" minLength={isSignUp ? 8 : undefined} required placeholder={isSignUp ? 'At least 8 characters' : 'Your password'} value={password} onChange={event => setPassword(event.target.value)} /></label>
             <ErrorNotice message={error} />
-            <Button className="button-full" disabled={busy || retrySeconds > 0}>{busy ? 'Sending code…' : retrySeconds ? `Try again in ${retrySeconds}s` : 'Continue with email'} <Icon>arrow_forward</Icon></Button>
-          </form> : <form className="form-stack" onSubmit={verifyCode}>
-            <label>Verification code<input autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="Enter your code" value={code} onChange={event => setCode(event.target.value.replace(/\s/g, ''))} /></label>
-            <label>Vault PIN <span className="label-optional">Setup or unlock</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={4} placeholder="4 digits" value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} /></label>
-            <p className="form-hint"><Icon>lock</Icon> A new PIN is created here on first login; existing users enter their saved PIN.</p>
-            <ErrorNotice message={error} />
-            <Button className="button-full" disabled={busy}>{busy ? 'Verifying…' : 'Verify and open Planify'} <Icon>lock_open</Icon></Button>
-            <button type="button" className="text-button centered" onClick={() => setStep(1)}>Use a different email</button>
-          </form>}
-          <div className="auth-trust"><Icon>verified_user</Icon><span>Your plans stay yours. Private plans are PIN-protected.</span></div>
+            {notice && <div className="notice notice-success" role="status">{notice}</div>}
+            <Button className="button-full" disabled={busy}>{busy ? 'Please wait…' : isSignUp ? 'Create account' : 'Sign in'} <Icon>arrow_forward</Icon></Button>
+          </form>
+          <button type="button" className="text-button centered" onClick={() => { setIsSignUp(value => !value); setError(''); setNotice('') }}>
+            {isSignUp ? 'Already have an account? Sign in' : 'New to Planify? Create an account'}
+          </button>
+          <div className="auth-trust"><Icon>verified_user</Icon><span>Your plans stay yours. Private plans remain protected by your vault PIN.</span></div>
         </section>
         <aside className="auth-aside"><div className="aside-orb"><Icon>track_changes</Icon></div><span className="eyebrow">Small steps, real momentum</span><h2>Turn the big picture into a plan for today.</h2><p>Keep your goals close, your priorities clear, and your progress in view.</p><div className="aside-stat"><span className="aside-stat-icon"><Icon>auto_awesome</Icon></span><div><b>A little clarity goes a long way</b><span>Start with one thing that matters.</span></div></div></aside>
       </div>
@@ -221,6 +188,17 @@ const navItems = [
 function Shell() {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [accountName, setAccountName] = useState('Your account')
+  useEffect(() => {
+    if (!supabase) return
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (error) {
+        console.error('Could not load account details:', error.message)
+        return
+      }
+      setAccountName(data.user?.user_metadata?.full_name || data.user?.email || 'Your account')
+    })
+  }, [])
   const signOut = async () => {
     sessionStorage.removeItem('pinToken')
     if (supabase) await supabase.auth.signOut()
@@ -232,7 +210,7 @@ function Shell() {
         <nav className="side-nav">{navItems.map(item => <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}><Icon>{item.icon}</Icon><span>{item.label}</span>{item.badge && <small>{item.badge}</small>}</NavLink>)}</nav>
       </div>
       <div className="sidebar-bottom"><div className="vault-summary"><div className="summary-title"><span>Private space</span><Icon>lock</Icon></div><p>Your personal plans stay protected.</p><NavLink to="/private-plans">Open vault <Icon>arrow_forward</Icon></NavLink></div>
-        <button className="profile-button" onClick={signOut}><span className="avatar">{(supabase.auth.getSession ? 'P' : 'P')}</span><span><b>Your account</b><small>Sign out</small></span><Icon>logout</Icon></button>
+        <button className="profile-button" onClick={signOut}><span className="avatar">{accountName.charAt(0).toUpperCase()}</span><span><b>{accountName}</b><small>Sign out</small></span><Icon>logout</Icon></button>
       </div>
     </aside>
     <div className="workspace">

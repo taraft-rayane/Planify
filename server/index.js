@@ -37,10 +37,6 @@ async function auth(req, res, next) {
 }
 
 // --- PIN ---
-app.get('/api/pin/status', auth, wrap(async (req, res) => {
-  const { data } = await sb.from('profiles').select('pin_hash').eq('id', req.user.id).maybeSingle()
-  res.json({ hasPin: Boolean(data?.pin_hash) })
-}))
 app.post('/api/pin', auth, wrap(async (req, res) => {
   const { pin } = req.body
   if (!/^\d{4}$/.test(pin || '')) return res.status(400).json({ error: 'PIN à 4 chiffres' })
