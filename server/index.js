@@ -126,4 +126,8 @@ if (process.env.NODE_ENV === 'production') {
   })
 }
 
-app.listen(process.env.PORT || 3001, () => console.log('API prête'))
+if (!process.env.VERCEL) {
+  app.listen(process.env.PORT || 3001, () => console.log('API prête'))
+}
+
+export default app
