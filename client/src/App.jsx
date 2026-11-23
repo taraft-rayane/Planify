@@ -134,7 +134,6 @@ function Auth() {
     event.preventDefault()
     setError('')
     if (!supabaseConfigured) return setError('Supabase is not configured. Copy client/.env.example to client/.env and add your project URL and anon key.')
-    if (pin && !/^\d{4}$/.test(pin)) return setError('Your vault PIN must be exactly four digits.')
     if (retrySeconds) return setError(`Please wait ${retrySeconds} seconds before requesting another code.`)
     setBusy(true)
     const { error: authError } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
@@ -156,6 +155,10 @@ function Auth() {
     event.preventDefault()
     setError('')
     if (!supabaseConfigured) return setError('Supabase is not configured. Copy client/.env.example to client/.env and add your project URL and anon key.')
+    if (!/^\d{4}$/.test(pin)) {
+      setError('Enter your 4-digit PIN to complete sign-in.')
+      return
+    }
     setBusy(true)
     const { error: authError } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
     if (authError) {
@@ -163,16 +166,20 @@ function Auth() {
       setError('That code is invalid or expired. Please try again.')
       return
     }
-    if (pin) {
-      try {
+    try {
+      const { hasPin } = await api('/pin/status')
+      if (hasPin) {
+        const { token } = await api('/pin/verify', { method: 'POST', body: { pin } })
+        sessionStorage.setItem('pinToken', token)
+      } else {
         await api('/pin', { method: 'POST', body: { pin } })
-      } catch (reason) {
-        if (!String(reason.message).toLowerCase().includes('déjà défini')) {
-          setBusy(false)
-          setError(reason.message || 'Could not set your vault PIN.')
-          return
-        }
+        const { token } = await api('/pin/verify', { method: 'POST', body: { pin } })
+        sessionStorage.setItem('pinToken', token)
       }
+    } catch (reason) {
+      setBusy(false)
+      setError(reason.message || 'Could not complete PIN verification or setup.')
+      return
     }
     setBusy(false)
     navigate('/app')
@@ -185,12 +192,12 @@ function Auth() {
           <div className="auth-copy"><span className="eyebrow">{step === 1 ? 'A calmer way to plan' : 'One last step'}</span><h1>{step === 1 ? 'Make space for your goals.' : 'Check your inbox.'}</h1><p>{step === 1 ? 'Sign in or create your account with a one-time email code.' : `Enter the verification code sent to ${email}.`}</p></div>
           {step === 1 ? <form className="form-stack" onSubmit={sendCode}>
             <label>Email address<input autoComplete="email" type="email" required placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} /></label>
-            <label>Vault PIN <span className="label-optional">Optional for first-time setup</span><input inputMode="numeric" autoComplete="new-password" maxLength={4} placeholder="4 digits" value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} /></label>
-            <p className="form-hint"><Icon>lock</Icon> The PIN protects your Private Plans vault.</p>
             <ErrorNotice message={error} />
             <Button className="button-full" disabled={busy || retrySeconds > 0}>{busy ? 'Sending code…' : retrySeconds ? `Try again in ${retrySeconds}s` : 'Continue with email'} <Icon>arrow_forward</Icon></Button>
           </form> : <form className="form-stack" onSubmit={verifyCode}>
             <label>Verification code<input autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="Enter your code" value={code} onChange={event => setCode(event.target.value.replace(/\s/g, ''))} /></label>
+            <label>Vault PIN <span className="label-optional">Setup or unlock</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={4} placeholder="4 digits" value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} /></label>
+            <p className="form-hint"><Icon>lock</Icon> A new PIN is created here on first login; existing users enter their saved PIN.</p>
             <ErrorNotice message={error} />
             <Button className="button-full" disabled={busy}>{busy ? 'Verifying…' : 'Verify and open Planify'} <Icon>lock_open</Icon></Button>
             <button type="button" className="text-button centered" onClick={() => setStep(1)}>Use a different email</button>
